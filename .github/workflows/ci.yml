@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  rust:
+    name: Rust (test + clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: dr2d-rust
+
+      - name: Test
+        run: cargo test --workspace
+        working-directory: dr2d-rust
+
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
+        working-directory: dr2d-rust
+
+  python:
+    name: Python — justviz (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dev dependencies
+        run: uv sync --extra dev
+        working-directory: justviz
+
+      - name: Run tests
+        run: uv run pytest
+        working-directory: justviz

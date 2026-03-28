@@ -1,0 +1,24 @@
+name: Publish dr2d to crates.io
+
+on:
+  push:
+    tags:
+      - 'dr2d-v*'
+
+jobs:
+  publish:
+    name: cargo publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: dr2d-rust
+
+      - name: Publish to crates.io
+        run: cargo publish -p dr2d
+        working-directory: dr2d-rust
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}

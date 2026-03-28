@@ -1,0 +1,9 @@
+[project]
+name = "viz-primitive-docs"
+version = "0.0.0"
+description = "Docs tooling for viz_primitive — not published"
+requires-python = ">=3.10"
+dependencies = [
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+]

@@ -1,0 +1,19 @@
+[package]
+name = "dr2d-cli"
+version = "0.1.0-alpha.1"
+edition = "2021"
+authors = ["Krishnamoorthy Sankaran <krishnamoorthy.sankaran@sekrad.org>"]
+description = "CLI renderer for dr2d TOML scene files"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+dr2d = { path = "../dr2d" }
+clap = { version = "4", features = ["derive"] }
+env_logger = "0.11"
+log = "0.4"
+pollster = "0.4"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+notify = "7"
+winit = "0.30"

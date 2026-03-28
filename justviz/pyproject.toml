@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "justviz"
+version = "0.1.0a1"
+description = "Charts, scenes, storyboards, and animations powered by dr2d"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+keywords = ["visualization", "charts", "gpu", "scenes", "storyboard"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = [
+    "numpy>=1.24",
+    # "dr2d",  # uncomment when dr2d is published to PyPI
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "hypothesis"]
+jupyter = ["ipywidgets>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

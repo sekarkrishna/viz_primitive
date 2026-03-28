@@ -1,0 +1,45 @@
+[package]
+name = "dr2d"
+version = "0.0.1-alpha.1"
+edition = "2021"
+rust-version = "1.77"
+authors = ["Krishnamoorthy Sankaran <krishnamoorthy.sankaran@sekrad.org>"]
+description = "GPU-accelerated 2D data renderer built on wgpu"
+license = "Apache-2.0"
+readme = "../README.md"
+homepage = "https://github.com/sekarkrishna/viz_primitive"
+repository = "https://github.com/sekarkrishna/viz_primitive"
+documentation = "https://docs.rs/dr2d"
+keywords = ["gpu", "2d", "renderer", "wgpu", "visualization"]
+categories = ["rendering", "graphics"]
+exclude = ["tests/", "benches/"]
+
+[dependencies]
+wgpu = "24"
+winit = "0.30"
+bytemuck = { version = "1", features = ["derive"] }
+lyon = "1"
+arrow = { version = "54", default-features = false, features = ["ffi"] }
+parquet = { version = "54", default-features = false, features = ["arrow"] }
+thiserror = "2"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+proptest = "1"
+pollster = "0.4"
+
+[features]
+default = []
+text = []
+headless = []
+
+[[example]]
+name = "scatter_sdf"
+
+[[example]]
+name = "custom_shapes"
+
+[[example]]
+name = "headless_export"
+required-features = ["headless"]

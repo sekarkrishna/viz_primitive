@@ -1,0 +1,3 @@
+[workspace]
+members = ["dr2d", "dr2d-cli"]
+resolver = "2"

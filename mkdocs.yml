@@ -1,0 +1,52 @@
+site_name: viz_primitive
+site_description: GPU-accelerated 2D data rendering — dr2d, dr2d-python, justviz
+site_url: https://git.sekrad.org/viz_primitive
+repo_url: https://github.com/sekarkrishna/viz_primitive
+repo_name: sekarkrishna/viz_primitive
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.integrate
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - tables
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - dr2d (Rust):
+      - Overview: dr2d/index.md
+      - API Reference: dr2d/api.md
+      - Philosophy: dr2d/philosophy.md
+  - justviz (Python):
+      - Overview: justviz/index.md
+  - Roadmap: roadmap.md

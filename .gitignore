@@ -1,0 +1,36 @@
+# Claude Code local settings
+.claude/
+
+# Rust
+dr2d-rust/target/
+**/*.rs.bk
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.venv/
+venv/
+.env
+dist/
+build/
+**/*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# MkDocs built site
+site/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.idea/
+.vscode/
+*.iml
