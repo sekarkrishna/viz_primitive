@@ -13,6 +13,8 @@ import time
 import numpy as np
 import dr2d
 
+from justviz._renderer import get_renderer
+
 
 # ── validation helpers ──────────────────────────────────────────────
 
@@ -166,7 +168,7 @@ def scatter(
             return None
 
         t0 = time.perf_counter()
-        renderer = dr2d.HeadlessRenderer()
+        renderer = get_renderer()
         result = renderer.render_sdf_to_numpy(instances, width, height)
         dt = time.perf_counter() - t0
         print(f"scatter: {len(x):,} points, {width}×{height}, render {dt*1000:.1f}ms")

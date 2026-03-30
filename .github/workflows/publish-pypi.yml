@@ -12,15 +12,16 @@ jobs:
     name: Build dr2d wheel (${{ matrix.os }})
     if: startsWith(github.ref, 'refs/tags/dr2d-py-v')
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-          - os: macos-13
+          - os: macos-latest
             target: x86_64-apple-darwin
-          - os: macos-14
+          - os: macos-latest
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
@@ -75,6 +76,9 @@ jobs:
     name: Publish dr2d to PyPI
     needs: [build-dr2d-wheels, build-dr2d-sdist]
     runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -82,11 +86,17 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: List dist contents
+        run: ls -la dist/
+
+      - name: Install twine
+        run: pip install twine
+
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_TOKEN }}
-          packages-dir: dist/
+        run: twine upload dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
 
   # ── justviz: pure Python, single wheel ────────────────────────────
   publish-justviz:
