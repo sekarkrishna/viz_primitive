@@ -9,20 +9,40 @@ on:
 jobs:
   # ── dr2d-python: build multi-platform wheels via maturin ──────────
   build-dr2d-wheels:
-    name: Build dr2d wheel (${{ matrix.os }})
+    name: Build dr2d (${{ matrix.os }} / ${{ matrix.python }} / ${{ matrix.target }})
     if: startsWith(github.ref, 'refs/tags/dr2d-py-v')
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Linux x86_64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            python: '3.12'
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            python: '3.13'
+          # Windows x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-          - os: macos-latest
-            target: x86_64-apple-darwin
+            python: '3.12'
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            python: '3.13'
+          # macOS ARM (Apple Silicon)
           - os: macos-latest
             target: aarch64-apple-darwin
+            python: '3.12'
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            python: '3.13'
+          # macOS x86_64 (Intel)
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            python: '3.12'
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            python: '3.13'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +50,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -41,13 +61,13 @@ jobs:
         run: pip install maturin
 
       - name: Build wheel
-        run: maturin build --release --target ${{ matrix.target }} --out dist
+        run: maturin build --release --target ${{ matrix.target }} --interpreter python${{ matrix.python }} --out dist
         working-directory: dr2d-python
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wheel-${{ matrix.target }}
+          name: wheel-${{ matrix.target }}-py${{ matrix.python }}
           path: dr2d-python/dist/*.whl
 
   # ── dr2d-python: build sdist ──────────────────────────────────────
@@ -76,9 +96,6 @@ jobs:
     name: Publish dr2d to PyPI
     needs: [build-dr2d-wheels, build-dr2d-sdist]
     runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      id-token: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -93,7 +110,7 @@ jobs:
         run: pip install twine
 
       - name: Publish to PyPI
-        run: twine upload dist/*
+        run: twine upload --skip-existing dist/*
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
