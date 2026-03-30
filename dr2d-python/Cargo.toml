@@ -1,0 +1,17 @@
+[package]
+name = "dr2d-py"
+version = "0.1.0-alpha.1"
+edition = "2021"
+publish = false
+
+[lib]
+name = "dr2d"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.20", features = ["extension-module"] }
+numpy = "0.20"
+dr2d = { path = "../dr2d-rust/dr2d", features = ["headless"] }
+pollster = "0.3"
+ndarray = "0.15"
+winit = "0.30"

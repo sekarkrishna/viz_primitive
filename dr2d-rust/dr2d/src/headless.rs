@@ -250,6 +250,159 @@ impl HeadlessRenderer {
 
         Ok(pixels)
     }
+
+    /// Render SDF instances to an RGBA pixel buffer.
+    pub async fn render_sdf_to_image(
+        &mut self,
+        width: u32,
+        height: u32,
+        instances: &[crate::renderer::sdf_pipeline::SdfInstance],
+    ) -> Result<Vec<u8>, HeadlessError> {
+        if width == 0 || height == 0 {
+            return Err(HeadlessError::InvalidDimensions(width, height));
+        }
+
+        // Write identity transform to uniform buffer
+        let identity = [
+            1.0f32, 0.0, 0.0, 0.0, // col0
+            0.0, -1.0, 0.0, 0.0,    // col1 (y flipped for standard 2d coords if needed, but identity is fine)
+            0.0, 0.0, 1.0, 0.0,     // col2
+            1.0, 0.0, 0.0, 0.0,     // params
+        ];
+        // Note: For actual drawing, we might want an orthographic projection.
+        // Let's use a simple ortho projection mapped to width/height
+        let ortho = [
+            2.0 / width as f32, 0.0, 0.0, 0.0,
+            0.0, -2.0 / height as f32, 0.0, 0.0, // Flip Y so 0 is top
+            -1.0, 1.0, 1.0, 0.0, // Translate to top-left
+            1.0, 0.0, 0.0, 0.0,
+        ];
+        
+        self.queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            bytemuck::cast_slice(&ortho),
+        );
+
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("headless_render_texture"),
+            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: HEADLESS_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("headless_encoder"),
+        });
+
+        // 1. Draw SDFs
+        if !instances.is_empty() {
+            let instance_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("sdf_instance_buffer"),
+                contents: bytemuck::cast_slice(instances),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("headless_sdf_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.1, g: 0.1, b: 0.1, a: 1.0 }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            pass.set_pipeline(&self.sdf_pipeline);
+            pass.set_bind_group(0, &self.bind_group, &[]);
+            pass.set_vertex_buffer(0, instance_buffer.slice(..));
+            pass.draw(0..6, 0..instances.len() as u32);
+        } else {
+            // Just clear
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("headless_clear_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.1, g: 0.1, b: 0.1, a: 1.0 }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+
+        // 2. Copy Texture to Staging
+        let bytes_per_pixel = 4u32;
+        let unpadded_bytes_per_row = width * bytes_per_pixel;
+        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let padded_bytes_per_row = unpadded_bytes_per_row.div_ceil(align) * align;
+
+        let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("headless_staging_buffer"),
+            size: (padded_bytes_per_row * height) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &staging_buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded_bytes_per_row),
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        );
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+
+        // 3. Readback
+        let buffer_slice = staging_buffer.slice(..);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        self.device.poll(wgpu::Maintain::Wait);
+
+        receiver.recv()
+            .map_err(|e| HeadlessError::ReadbackFailed(e.to_string()))?
+            .map_err(|e| HeadlessError::ReadbackFailed(e.to_string()))?;
+
+        let data = buffer_slice.get_mapped_range();
+        let mut pixels = Vec::with_capacity((width * height * bytes_per_pixel) as usize);
+        for row in 0..height {
+            let start = (row * padded_bytes_per_row) as usize;
+            let end = start + unpadded_bytes_per_row as usize;
+            pixels.extend_from_slice(&data[start..end]);
+        }
+
+        drop(data);
+        staging_buffer.unmap();
+
+        Ok(pixels)
+    }
 }
 
 #[cfg(test)]

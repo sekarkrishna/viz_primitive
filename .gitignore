@@ -3,6 +3,7 @@
 
 # Rust
 dr2d-rust/target/
+dr2d-python/target/
 **/*.rs.bk
 
 # Python

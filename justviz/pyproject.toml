@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "justviz"
-version = "0.1.0a1"
+version = "0.1.0a2"
 description = "Charts, scenes, storyboards, and animations powered by dr2d"
 readme = "README.md"
 license = "MIT"
@@ -17,7 +17,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=1.24",
-    # "dr2d",  # uncomment when dr2d is published to PyPI
+    "dr2d",
 ]
 
 [project.urls]

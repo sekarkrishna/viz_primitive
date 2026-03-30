@@ -13,7 +13,7 @@
 pub mod data;
 pub mod input;
 #[allow(dead_code)]
-pub(crate) mod interaction;
+pub mod interaction;
 pub mod renderer;
 pub mod scene;
 pub mod viewport;
@@ -49,6 +49,12 @@ pub use renderer::vertex::{Vertex, InstanceData};
 // Data loading
 pub use data::parquet_loader::{ParquetLoader, ColumnPair, ParquetError};
 pub use data::coord_mapper::{CoordinateMapper, DataRange};
+
+// Interaction
+pub use interaction::{
+    InteractionProcessor, InteractionConfig, StoredViewport,
+    DragState, ModifierState, bounding_box, fit_viewport,
+};
 
 // Feature-gated re-exports
 

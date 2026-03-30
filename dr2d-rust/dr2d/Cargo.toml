@@ -20,7 +20,7 @@ winit = "0.30"
 bytemuck = { version = "1", features = ["derive"] }
 lyon = "1"
 arrow = { version = "54", default-features = false, features = ["ffi"] }
-parquet = { version = "54", default-features = false, features = ["arrow"] }
+parquet = { version = "54", default-features = false, features = ["arrow", "snap"] }
 thiserror = "2"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
