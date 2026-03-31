@@ -1,8 +1,3 @@
-"""Storyboard — sequenced views, transitions, presentation mode (placeholder)."""
+"""Storyboard — GPU-rendered click-through data presentations."""
 
-# TODO: Phase 4
-# - Ordered sequence of frames (viewpoint + visible layers + annotations)
-# - TOML-based storyboard definition
-# - Playback controls: next, previous, pause, auto-advance
-# - Viewport transitions with easing functions
-# - Layer transitions (opacity fade in/out)
+from justviz.storyboard.story import story  # noqa: F401

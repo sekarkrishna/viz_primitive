@@ -3,6 +3,7 @@ mod windowed;
 use numpy::{IntoPyArray, PyArray1, PyArray3, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::prelude::*;
 use ndarray::Array3;
+use std::collections::HashMap;
 use std::path::Path;
 
 use ::dr2d::headless::HeadlessRenderer as RustHeadlessRenderer;
@@ -14,6 +15,17 @@ use ::dr2d::data::coord_mapper::{
 };
 
 use winit::event_loop::EventLoop;
+use winit::platform::pump_events::EventLoopExtPumpEvents;
+
+use windowed::{ZoomMode, SlideState, StoryboardApp};
+
+use std::cell::RefCell;
+
+thread_local! {
+    static EVENT_LOOP: RefCell<EventLoop<()>> = RefCell::new(
+        EventLoop::new().expect("Failed to create initial event loop")
+    );
+}
 
 #[pyclass]
 struct HeadlessRenderer {
@@ -189,15 +201,20 @@ fn load_parquet_columns<'py>(
 /// instances: Nx10 float32 array with columns:
 ///   [position_x, position_y, size_x, size_y, r, g, b, a, shape_type, param]
 ///
+/// layer_sizes: optional list of integers specifying the instance count per layer.
+///   If provided, sum must equal the number of rows in instances.
+///   Enables digit-key (1–9) layer toggle in the interactive window.
+///
 /// Blocks until the window is closed. Releases the GIL while the event loop runs.
 #[pyfunction]
-#[pyo3(signature = (instances, width, height, title="dr2d"))]
+#[pyo3(signature = (instances, width, height, title="dr2d", layer_sizes=None))]
 fn show_sdf_window(
     py: Python<'_>,
     instances: PyReadonlyArray2<f32>,
     width: u32,
     height: u32,
     title: &str,
+    layer_sizes: Option<Vec<usize>>,
 ) -> PyResult<()> {
     // Validate dimensions
     if width == 0 || height == 0 {
@@ -223,6 +240,20 @@ fn show_sdf_window(
         ));
     }
 
+    // Validate layer_sizes if provided
+    let sizes = match layer_sizes {
+        Some(sizes) => {
+            let sum: usize = sizes.iter().sum();
+            if sum != num_instances {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "layer_sizes sum ({sum}) does not equal instance count ({num_instances})"
+                )));
+            }
+            sizes
+        }
+        None => Vec::new(),
+    };
+
     // Convert numpy rows to Vec<SdfInstance> and extract scene points
     let mut sdf_instances = Vec::with_capacity(num_instances);
     let mut scene_points = Vec::with_capacity(num_instances);
@@ -243,9 +274,183 @@ fn show_sdf_window(
 
     // Release the GIL and run the event loop
     let result = py.allow_threads(move || -> Result<(), String> {
-        let event_loop = EventLoop::new().map_err(|e| format!("Failed to create event loop: {e}"))?;
-        let mut app = windowed::App::new(title, width, height, sdf_instances, scene_points);
-        event_loop.run_app(&mut app).map_err(|e| format!("Event loop error: {e}"))?;
+        let mut app = windowed::App::new(title, width, height, sdf_instances, scene_points, sizes);
+        EVENT_LOOP.with(|el| {
+            let mut event_loop = el.borrow_mut();
+            loop {
+                let timeout = std::time::Duration::from_millis(16); // ~60fps polling
+                let status = event_loop.pump_app_events(Some(timeout), &mut app);
+                if let winit::platform::pump_events::PumpStatus::Exit(_) = status {
+                    break;
+                }
+                if app.should_exit() {
+                    break;
+                }
+            }
+        });
+        app.take_error()
+    });
+
+    result.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
+}
+
+/// Open an interactive storyboard window with slide navigation.
+///
+/// instances: Nx10 float32 array with columns:
+///   [position_x, position_y, size_x, size_y, r, g, b, a, shape_type, param]
+///
+/// layer_sizes: list of integers specifying the instance count per layer.
+///   Sum must equal the number of rows in instances.
+///
+/// slides: list of dicts, each with keys:
+///   "zoom_mode" (str: "fit" or "explicit"),
+///   "pan_x" (float), "pan_y" (float), "zoom" (float),
+///   "visible_layers" (list of 0-based ints; empty = all),
+///   "title" (str).
+///
+/// Blocks until the window is closed. Releases the GIL while the event loop runs.
+#[pyfunction]
+#[pyo3(signature = (instances, width, height, layer_sizes, slides))]
+fn show_storyboard_window(
+    py: Python<'_>,
+    instances: PyReadonlyArray2<f32>,
+    width: u32,
+    height: u32,
+    layer_sizes: Vec<usize>,
+    slides: Vec<HashMap<String, PyObject>>,
+) -> PyResult<()> {
+    // Validate dimensions
+    if width == 0 || height == 0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "width and height must be > 0",
+        ));
+    }
+
+    let arr = instances.as_array();
+    let shape = arr.shape();
+
+    if shape.len() != 2 || shape[1] != 10 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Instances array must be shape (N, 10)",
+        ));
+    }
+
+    let num_instances = shape[0];
+    if num_instances == 0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Instances array must not be empty",
+        ));
+    }
+
+    // Validate layer_sizes
+    let sum: usize = layer_sizes.iter().sum();
+    if sum != num_instances {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "layer_sizes sum ({sum}) does not equal instance count ({num_instances})"
+        )));
+    }
+
+    // Parse slide dicts into SlideState
+    let mut parsed_slides = Vec::with_capacity(slides.len());
+    for (i, slide_dict) in slides.iter().enumerate() {
+        let zoom_mode_str: String = slide_dict
+            .get("zoom_mode")
+            .ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err(format!(
+                    "Slide {i}: missing 'zoom_mode' key"
+                ))
+            })?
+            .extract(py)?;
+
+        let zoom_mode = match zoom_mode_str.as_str() {
+            "fit" => ZoomMode::Fit,
+            "explicit" => ZoomMode::Explicit,
+            other => {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "Slide {i}: zoom_mode must be 'fit' or 'explicit', got '{other}'"
+                )));
+            }
+        };
+
+        let pan_x: f32 = slide_dict
+            .get("pan_x")
+            .map(|v| v.extract(py))
+            .transpose()?
+            .unwrap_or(0.0);
+
+        let pan_y: f32 = slide_dict
+            .get("pan_y")
+            .map(|v| v.extract(py))
+            .transpose()?
+            .unwrap_or(0.0);
+
+        let zoom: f32 = slide_dict
+            .get("zoom")
+            .map(|v| v.extract(py))
+            .transpose()?
+            .unwrap_or(1.0);
+
+        let visible_layers: Vec<usize> = slide_dict
+            .get("visible_layers")
+            .map(|v| v.extract(py))
+            .transpose()?
+            .unwrap_or_default();
+
+        let title: String = slide_dict
+            .get("title")
+            .map(|v| v.extract(py))
+            .transpose()?
+            .unwrap_or_default();
+
+        parsed_slides.push(SlideState {
+            zoom_mode,
+            pan_x,
+            pan_y,
+            zoom,
+            visible_layers,
+            title,
+        });
+    }
+
+    // Convert numpy rows to Vec<SdfInstance> and extract scene points
+    let mut sdf_instances = Vec::with_capacity(num_instances);
+    let mut scene_points = Vec::with_capacity(num_instances);
+
+    for row in arr.rows() {
+        sdf_instances.push(SdfInstance {
+            position: [row[0], row[1]],
+            size: [row[2], row[3]],
+            color: [row[4], row[5], row[6], row[7]],
+            shape_type: row[8] as u32,
+            param: row[9],
+            _pad: [0.0, 0.0],
+        });
+        scene_points.push([row[0], row[1]]);
+    }
+
+    // Release the GIL and run the event loop
+    let result = py.allow_threads(move || -> Result<(), String> {
+        let mut app = StoryboardApp::new(
+            width,
+            height,
+            sdf_instances,
+            scene_points,
+            layer_sizes,
+            parsed_slides,
+        );
+        EVENT_LOOP.with(|el| {
+            let mut event_loop = el.borrow_mut();
+            loop {
+                let timeout = std::time::Duration::from_millis(16);
+                let status = event_loop.pump_app_events(Some(timeout), &mut app);
+                if let winit::platform::pump_events::PumpStatus::Exit(_) = status {
+                    break;
+                }
+                if app.should_exit() {
+                    break;
+                }
+            }
+        });
         app.take_error()
     });
 
@@ -258,5 +463,6 @@ fn dr2d(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<CoordinateMapper>()?;
     m.add_function(wrap_pyfunction!(load_parquet_columns, m)?)?;
     m.add_function(wrap_pyfunction!(show_sdf_window, m)?)?;
+    m.add_function(wrap_pyfunction!(show_storyboard_window, m)?)?;
     Ok(())
 }

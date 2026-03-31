@@ -1,10 +1,11 @@
 """Bar chart — builds 10-column SDF instance arrays for dr2d rounded rects.
 
 Public API:
-    bar(x, y, *, color, bar_width, opacity, width, height) -> np.ndarray
+    bar(x_or_data, y=None, *, x_col, y_col, color, bar_width, opacity,
+        width, height, padding, interactive) -> np.ndarray | None
 
 Helper (testable without GPU):
-    _build_bar_instances(x, y, color, bar_width, opacity, mapper, scene_width) -> np.ndarray
+    _build_bar_instances(x, y, color, bar_width, opacity, scene_width, scene_height, padding) -> np.ndarray
 """
 
 from __future__ import annotations
@@ -12,6 +13,10 @@ from __future__ import annotations
 import time
 import numpy as np
 import dr2d
+
+from justviz._renderer import get_renderer
+from justviz._input import resolve_input
+from justviz._window import launch_window
 
 
 # ── validation helpers ──────────────────────────────────────────────
@@ -120,9 +125,11 @@ def _padded_mapper(
 
 
 def bar(
-    x,
-    y,
+    x_or_data,
+    y=None,
     *,
+    x_col: str | None = None,
+    y_col: str | None = None,
     color: tuple[float, float, float] | None = None,
     bar_width: float = 0.8,
     opacity: float = 1.0,
@@ -135,8 +142,15 @@ def bar(
 
     Parameters
     ----------
-    x, y : array-like
-        Data coordinates.  ``x`` gives category positions, ``y`` gives bar heights.
+    x_or_data : array-like, DataFrame, or str
+        Either x-coordinates (array-like), a pandas/polars DataFrame, or a
+        parquet file path.  When a DataFrame or path, use *x_col* and *y_col*
+        to name the columns.
+    y : array-like, optional
+        Bar heights when *x_or_data* is array-like.  Ignored for DataFrame
+        or parquet path inputs.
+    x_col, y_col : str, optional
+        Column names to extract when *x_or_data* is a DataFrame or parquet path.
     color : tuple of 3 floats in [0, 1], optional
         RGB colour applied to every bar.  Default ``(0.4, 0.6, 1.0)``.
     bar_width : float
@@ -145,17 +159,19 @@ def bar(
         Alpha value in [0, 1].  Default ``1.0``.
     width, height : int
         Output image dimensions in pixels.
+    interactive : bool
+        If True, open an interactive window instead of returning pixel data.
 
     Returns
     -------
-    np.ndarray
+    np.ndarray or None
         Shape ``(height, width, 4)``, dtype ``uint8`` — RGBA pixel data.
+        Returns None when *interactive* is True.
     """
     if color is None:
         color = (0.4, 0.6, 1.0)
 
-    x = np.asarray(x, dtype=np.float32)
-    y = np.asarray(y, dtype=np.float32)
+    x, y = resolve_input(x_or_data, y, x=x_col, y=y_col)
 
     if len(x) != len(y):
         raise ValueError("x and y must have the same length")
@@ -178,11 +194,11 @@ def bar(
     )
 
     if interactive:
-        dr2d.show_sdf_window(instances, width, height, "justviz — bar")
+        launch_window(instances, width, height, "justviz — bar")
         return None
 
     t0 = time.perf_counter()
-    renderer = dr2d.HeadlessRenderer()
+    renderer = get_renderer()
     result = renderer.render_sdf_to_numpy(instances, width, height)
     dt = time.perf_counter() - t0
     print(f"bar: {len(x)} bars, {width}×{height}, render {dt*1000:.1f}ms")

@@ -1,7 +1,8 @@
 """Scatter chart — builds 10-column SDF instance arrays for dr2d circles.
 
 Public API:
-    scatter(x, y, *, color, size, opacity, width, height, layers) -> np.ndarray
+    scatter(x_or_data, y=None, *, x_col, y_col, color, size, opacity,
+            width, height, layers, interactive) -> np.ndarray | None
 
 Helper (testable without GPU):
     _build_scatter_instances(x, y, color, size, opacity, mapper) -> np.ndarray
@@ -14,6 +15,8 @@ import numpy as np
 import dr2d
 
 from justviz._renderer import get_renderer
+from justviz._input import resolve_input
+from justviz._window import launch_window
 
 
 # ── validation helpers ──────────────────────────────────────────────
@@ -104,9 +107,11 @@ def _padded_mapper(
 
 
 def scatter(
-    x,
-    y,
+    x_or_data,
+    y=None,
     *,
+    x_col: str | None = None,
+    y_col: str | None = None,
     color: tuple[float, float, float] | None = None,
     size: float = 4.0,
     opacity: float = 1.0,
@@ -120,8 +125,15 @@ def scatter(
 
     Parameters
     ----------
-    x, y : array-like
-        Data coordinates.  Ignored when *layers* is provided.
+    x_or_data : array-like, DataFrame, or str
+        Either x-coordinates (array-like), a pandas/polars DataFrame, or a
+        parquet file path.  When a DataFrame or path, use *x_col* and *y_col*
+        to name the columns.
+    y : array-like, optional
+        y-coordinates when *x_or_data* is array-like.  Ignored for DataFrame
+        or parquet path inputs.
+    x_col, y_col : str, optional
+        Column names to extract when *x_or_data* is a DataFrame or parquet path.
     color : tuple of 3 floats in [0, 1], optional
         RGB colour applied to every point.  Default ``(1.0, 0.4, 0.6)``.
     size : float
@@ -133,19 +145,21 @@ def scatter(
     layers : list of dicts, optional
         Multi-layer mode.  Each dict must contain ``"x"`` and ``"y"`` keys
         and may contain ``"color"``, ``"size"``, ``"opacity"``.
+    interactive : bool
+        If True, open an interactive window instead of returning pixel data.
 
     Returns
     -------
-    np.ndarray
+    np.ndarray or None
         Shape ``(height, width, 4)``, dtype ``uint8`` — RGBA pixel data.
+        Returns None when *interactive* is True.
     """
     if color is None:
         color = (1.0, 0.4, 0.6)
 
     # ── single-layer mode ───────────────────────────────────────────
     if layers is None:
-        x = np.asarray(x, dtype=np.float32)
-        y = np.asarray(y, dtype=np.float32)
+        x, y = resolve_input(x_or_data, y, x=x_col, y=y_col)
 
         if len(x) != len(y):
             raise ValueError("x and y must have the same length")
@@ -164,7 +178,7 @@ def scatter(
         instances = _build_scatter_instances(x, y, color, size, opacity, mapper)
 
         if interactive:
-            dr2d.show_sdf_window(instances, width, height, "justviz — scatter")
+            launch_window(instances, width, height, "justviz — scatter")
             return None
 
         t0 = time.perf_counter()
@@ -224,12 +238,13 @@ def scatter(
 
     # 4. Render in one pass
     if interactive:
-        dr2d.show_sdf_window(instances, width, height, "justviz — scatter")
+        layer_sizes = [len(lx) for lx, *_ in parsed_layers]
+        launch_window(instances, width, height, "justviz — scatter", layer_sizes=layer_sizes)
         return None
 
     total_points = sum(len(lx) for lx, *_ in parsed_layers)
     t0 = time.perf_counter()
-    renderer = dr2d.HeadlessRenderer()
+    renderer = get_renderer()
     result = renderer.render_sdf_to_numpy(instances, width, height)
     dt = time.perf_counter() - t0
     print(f"scatter: {total_points:,} points ({len(parsed_layers)} layers), {width}×{height}, render {dt*1000:.1f}ms")
