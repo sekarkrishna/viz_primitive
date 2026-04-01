@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "justviz"
-version = "0.1.0a2"
+version = "0.1.0a3"
 description = "Charts, scenes, storyboards, and animations powered by dr2d"
 readme = "README.md"
 license = "MIT"

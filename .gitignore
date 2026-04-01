@@ -21,6 +21,10 @@ build/
 .mypy_cache/
 .ruff_cache/
 
+# Jupyter
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
 # MkDocs built site
 site/
 
